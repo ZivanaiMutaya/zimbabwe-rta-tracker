@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zimbabwe Road Traffic Accident Tracker</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#5a5a5a; --line:#ddd; --accent:#b3261e; --bg:#fafafa; }
+  body { font-family: system-ui, -apple-system, sans-serif; color:var(--ink); margin:0; background:var(--bg); }
+  header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  header { padding-top: 32px; }
+  h1 { font-size: 1.9rem; margin-bottom: 4px; }
+  .tagline { color: var(--muted); margin-top: 0; }
+  .badge { display:inline-block; background:#eef6ee; color:#1d5c1d; border:1px solid #b9d9b9; padding:2px 10px; border-radius:20px; font-size:.85rem; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin: 24px 0; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 20px; min-width:150px; flex:1; }
+  .card .num { font-size:2rem; font-weight:700; }
+  .card .lbl { color:var(--muted); font-size:.9rem; }
+  section { background:#fff; border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:20px; }
+  h2 { font-size:1.2rem; margin-top:0; }
+  .bar-row { display:flex; align-items:center; gap:10px; margin:6px 0; font-size:.95rem; }
+  .bar-row .name { width:180px; flex-shrink:0; }
+  .bar-track { flex:1; background:#eee; border-radius:4px; height:18px; }
+  .bar-fill { background:var(--accent); height:18px; border-radius:4px; }
+  .bar-row .val { width:40px; text-align:right; }
+  table { width:100%; border-collapse:collapse; font-size:.92rem; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); }
+  .empty { color:var(--muted); padding:24px 0; text-align:center; }
+  .note { color:var(--muted); font-size:.9rem; }
+  footer { padding-bottom: 32px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Zimbabwe Road Traffic Accident Tracker</h1>
+  <p class="tagline">Confirmed road traffic accidents in Zimbabwe, manually recorded with full sourcing — so the record can become road-safety action.</p>
+  <span class="badge">Confirmed records only: ZRP Twitter or newspaper reports</span>
+</header>
+<main>
+  <div class="cards">
+    <div class="card"><div class="num" id="stat-incidents">–</div><div class="lbl">Confirmed accidents</div></div>
+    <div class="card"><div class="num" id="stat-fatalities">–</div><div class="lbl">Lives lost</div></div>
+    <div class="card"><div class="num" id="stat-injuries">–</div><div class="lbl">People injured</div></div>
+    <div class="card"><div class="num" id="stat-days">–</div><div class="lbl">Monitored days logged</div></div>
+  </div>
+
+  <section>
+    <h2>By province</h2>
+    <div id="by-province"></div>
+  </section>
+
+  <section>
+    <h2>By suspected cause</h2>
+    <div id="by-cause"></div>
+  </section>
+
+  <section>
+    <h2>All recorded accidents</h2>
+    <div id="incident-table"></div>
+  </section>
+
+  <section>
+    <h2>How this data is kept honest</h2>
+    <ul>
+      <li><strong>One record per incident.</strong> If ZRP and a newspaper both report the same crash, it is one row with two sources.</li>
+      <li><strong>Unknown stays blank, never a guessed zero.</strong> A blank fatality or injury count means "not reported".</li>
+      <li><strong>Coverage log.</strong> Days and provinces actually monitored are logged separately, so "no accidents recorded" is never confused with "nobody was watching".</li>
+      <li><strong>Confirmed only in the totals.</strong> Anything flagged unverified is kept out of the headline numbers.</li>
+    </ul>
+    <p class="note">This is a record of <em>reported and confirmed</em> accidents, not a claim to count every accident in Zimbabwe. Underreporting is real.</p>
+    <p class="note">Data file: <a href="data/accidents.csv">data/accidents.csv</a> · Method: <a href="https://github.com/ZivanaiMutaya/zimbabwe-rta-tracker">GitHub repository</a></p>
+  </section>
+</main>
+<footer><p class="note">Zimbabwe RTA Tracker — records become evidence.</p></footer>
+
+<script>
+function parseCSV(text) {
+  const rows = [];
+  let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i+1] === '\n') i++;
+      row.push(cur); cur = ''; rows.push(row); row = [];
+    } else cur += c;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  const head = rows[0].map(h => h.trim());
+  return rows.slice(1).filter(r => r.some(v => v.trim() !== '')).map(r => {
+    const o = {}; head.forEach((h, j) => o[h] = (r[j] || '').trim()); return o;
+  });
+}
+function num(v) { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; }
+function bars(el, counts) {
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) { el.innerHTML = '<p class="empty">No records yet.</p>'; return; }
+  const max = entries[0][1];
+  el.innerHTML = entries.map(([k, v]) =>
+    '<div class="bar-row"><span class="name">' + k + '</span><span class="bar-track"><span class="bar-fill" style="width:' + (v / max * 100) + '%"></span></span><span class="val">' + v + '</span></div>').join('');
+}
+fetch('data/accidents.csv', { cache: 'no-store' })
+  .then(r => r.text())
+  .then(text => {
+    const all = parseCSV(text);
+    const confirmed = all.filter(r => (r.verified || 'yes').toLowerCase() !== 'no');
+    const pending = all.filter(r => (r.verified || '').toLowerCase() === 'no');
+    document.getElementById('stat-incidents').textContent = confirmed.length;
+    document.getElementById('stat-fatalities').textContent = confirmed.reduce((s, r) => s + num(r.fatalities), 0);
+    document.getElementById('stat-injuries').textContent = confirmed.reduce((s, r) => s + num(r.injuries), 0);
+    const prov = {}, cause = {};
+    confirmed.forEach(r => {
+      if (r.province) prov[r.province] = (prov[r.province] || 0) + 1;
+      if (r.suspected_cause) cause[r.suspected_cause] = (cause[r.suspected_cause] || 0) + 1;
+    });
+    bars(document.getElementById('by-province'), prov);
+    bars(document.getElementById('by-cause'), cause);
+    const tbl = document.getElementById('incident-table');
+    if (!confirmed.length) {
+      tbl.innerHTML = '<p class="empty">No confirmed accidents recorded yet. Records added to the data file will appear here automatically.</p>';
+    } else {
+      const rows = confirmed.slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).map(r =>
+        '<tr><td>' + (r.date || '') + '</td><td>' + (r.province || '') + '</td><td>' + (r.town_or_road || '') + '</td><td>' + (r.vehicles_involved || '') + '</td><td>' + (r.fatalities || '–') + '</td><td>' + (r.injuries || '–') + '</td><td>' + (r.suspected_cause || '') + '</td><td>' + (r.source_url ? '<a href="' + r.source_url + '" target="_blank" rel="noopener">source</a>' : (r.source_name || '')) + '</td></tr>').join('');
+      tbl.innerHTML = '<table><tr><th>Date</th><th>Province</th><th>Road / town</th><th>Vehicles</th><th>Deaths</th><th>Injured</th><th>Cause</th><th>Source</th></tr>' + rows + '</table>';
+      if (pending.length) tbl.innerHTML += '<p class="note">' + pending.length + ' record(s) held out of the totals pending verification.</p>';
+    }
+  })
+  .catch(() => {
+    document.getElementById('incident-table').innerHTML = '<p class="empty">Data file not found yet.</p>';
+  });
+fetch('data/coverage.csv', { cache: 'no-store' })
+  .then(r => r.text())
+  .then(text => {
+    const rows = parseCSV(text);
+    document.getElementById('stat-days').textContent = rows.filter(r => (r.monitored || '').toLowerCase() === 'yes').length;
+  })
+  .catch(() => { document.getElementById('stat-days').textContent = '0'; });
+</script>
+</body>
+</html>
