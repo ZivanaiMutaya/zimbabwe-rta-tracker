@@ -17,6 +17,13 @@ that can convince leadership to act on road safety.
 5. **Coverage log.** `data/coverage.csv` records which days and provinces were
    actually monitored, so "no accidents recorded" is never confused with
    "nobody was watching".
+6. **Latest toll wins.** When later reports raise a death toll, the `fatalities`
+   figure is updated to the latest total — a death in hospital from crash
+   injuries is still a fatality from that accident. Where the scene/hospital
+   split is reported, it goes in `notes`; there is no separate hospital column
+   while splits are rarely reported.
+7. **ZRP wins conflicts.** When sources disagree on a peg, toll, or other
+   detail, the ZRP figure is used and the conflict is flagged in `notes`.
 
 ## How to add an accident
 
